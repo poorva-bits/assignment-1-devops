@@ -1,8 +1,11 @@
-from flask import Flask, jsonify, request
+import csv
+import io
+
+from flask import Flask, Response, jsonify, request
 
 app = Flask(__name__)
 
-VERSION = "1.1"
+VERSION = "1.2"
 
 PROGRAMS = {
     "fat_loss": {
@@ -33,6 +36,9 @@ PROGRAMS = {
         "calorie_factor": 26,
     },
 }
+
+# In-memory client store
+CLIENTS = []
 
 def calculate_calories(weight, program_id):
     """Daily calorie estimate = weight (kg) x program calorie factor."""
@@ -79,11 +85,29 @@ def create_client():
     if calories is None:
         return jsonify({"error": "Invalid program"}), 404
 
-    return jsonify({
+    record = {
         "name": name,
+        "weight": weight,
         "program": PROGRAMS[program_id]["name"],
         "estimated_calories": calories,
-    })
+    }
+    CLIENTS.append(record)
+    return jsonify(record)
+
+@app.route("/clients")
+def list_clients():
+    return jsonify(CLIENTS)
+
+@app.route("/clients/export")
+def export_clients():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["name", "weight", "program", "calories"])
+    for c in CLIENTS:
+        writer.writerow(
+            [c["name"], c["weight"], c["program"], c["estimated_calories"]]
+        )
+    return Response(output.getvalue(), mimetype="text/csv")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
