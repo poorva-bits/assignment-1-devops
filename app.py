@@ -5,11 +5,15 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime
 
+import matplotlib
 from flask import Flask, Response, jsonify, request
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
-VERSION = "2.0"
+VERSION = "2.1"
 
 PROGRAMS = {
     "fat_loss": {
@@ -182,6 +186,41 @@ def log_progress():
         (name, week, adherence),
     )
     return jsonify({"name": name, "week": week, "adherence": adherence})
+
+@app.route("/client/<name>/progress")
+def get_progress(name):
+    rows = db_fetchall(
+        "SELECT week, adherence FROM progress WHERE client_name=? ORDER BY id",
+        (name,),
+    )
+    return jsonify([{"week": r["week"], "adherence": r["adherence"]} for r in rows])
+
+@app.route("/client/<name>/progress-chart")
+def progress_chart(name):
+    rows = db_fetchall(
+        "SELECT week, adherence FROM progress WHERE client_name=? ORDER BY id",
+        (name,),
+    )
+    if not rows:
+        return jsonify({"error": "No progress data for this client"}), 404
+
+    weeks = [r["week"] for r in rows]
+    adherence = [r["adherence"] for r in rows]
+
+    fig, ax = plt.subplots(figsize=(7, 3.5))
+    ax.plot(weeks, adherence, marker="o", linewidth=2)
+    ax.set_title(f"Weekly Adherence Progress - {name}")
+    ax.set_xlabel("Week")
+    ax.set_ylabel("Adherence (%)")
+    ax.set_ylim(0, 100)
+    ax.grid(True)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    fig.tight_layout()
+
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png")
+    plt.close(fig)
+    return Response(buffer.getvalue(), mimetype="image/png")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

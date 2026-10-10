@@ -93,3 +93,23 @@ def test_log_progress_invalid_value(client):
     add_client(client, "A")
     response = client.post("/progress", json={"name": "A", "adherence": 150})
     assert response.status_code == 400
+
+def test_progress_history(client):
+    add_client(client, "A")
+    client.post("/progress", json={"name": "A", "adherence": 70})
+    client.post("/progress", json={"name": "A", "adherence": 90})
+    response = client.get("/client/A/progress")
+    assert response.status_code == 200
+    assert [p["adherence"] for p in response.get_json()] == [70, 90]
+
+def test_progress_chart_returns_png(client):
+    add_client(client, "A")
+    client.post("/progress", json={"name": "A", "adherence": 70})
+    response = client.get("/client/A/progress-chart")
+    assert response.status_code == 200
+    assert response.mimetype == "image/png"
+    assert response.data.startswith(b"\x89PNG")
+
+def test_progress_chart_without_data(client):
+    add_client(client, "A")
+    assert client.get("/client/A/progress-chart").status_code == 404
