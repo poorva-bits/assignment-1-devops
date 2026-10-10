@@ -49,19 +49,23 @@ PROGRAMS = {
 
 DB_NAME = os.environ.get("ACEEST_DB", "aceest.db")
 
+
 def get_db():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def db_execute(sql, params=()):
     with closing(get_db()) as conn:
         conn.execute(sql, params)
         conn.commit()
 
+
 def db_fetchall(sql, params=()):
     with closing(get_db()) as conn:
         return conn.execute(sql, params).fetchall()
+
 
 def init_db():
     db_execute("""
@@ -92,7 +96,9 @@ def init_db():
             ("admin", generate_password_hash("admin123")),
         )
 
+
 init_db()
+
 
 def calculate_calories(weight, program_id):
     """Daily calorie estimate = weight (kg) x program calorie factor."""
@@ -101,6 +107,7 @@ def calculate_calories(weight, program_id):
         return None
     return int(weight * program["calorie_factor"])
 
+
 @app.route("/")
 def home():
     return jsonify({
@@ -108,13 +115,16 @@ def home():
         "version": VERSION,
     })
 
+
 @app.route("/health")
 def health():
     return jsonify({"status": "UP"})
 
+
 @app.route("/programs")
 def list_programs():
     return jsonify({key: val["name"] for key, val in PROGRAMS.items()})
+
 
 @app.route("/programs/<program_id>")
 def get_program(program_id):
@@ -122,6 +132,7 @@ def get_program(program_id):
     if not program:
         return jsonify({"error": "Program not found"}), 404
     return jsonify(program)
+
 
 @app.route("/client", methods=["POST"])
 def create_client():
@@ -151,6 +162,7 @@ def create_client():
         "estimated_calories": calories,
     })
 
+
 def row_to_client(row):
     return {
         "name": row["name"],
@@ -159,6 +171,7 @@ def row_to_client(row):
         "calories": row["calories"],
     }
 
+
 @app.route("/client/<name>")
 def get_client(name):
     rows = db_fetchall("SELECT * FROM clients WHERE name=?", (name,))
@@ -166,10 +179,12 @@ def get_client(name):
         return jsonify({"error": "Client not found"}), 404
     return jsonify(row_to_client(rows[0]))
 
+
 @app.route("/clients")
 def list_clients():
     rows = db_fetchall("SELECT * FROM clients ORDER BY name")
     return jsonify([row_to_client(r) for r in rows])
+
 
 @app.route("/clients/export")
 def export_clients():
@@ -179,6 +194,7 @@ def export_clients():
     for r in db_fetchall("SELECT * FROM clients ORDER BY name"):
         writer.writerow([r["name"], r["weight"], r["program"], r["calories"]])
     return Response(output.getvalue(), mimetype="text/csv")
+
 
 @app.route("/progress", methods=["POST"])
 def log_progress():
@@ -200,6 +216,7 @@ def log_progress():
     )
     return jsonify({"name": name, "week": week, "adherence": adherence})
 
+
 @app.route("/client/<name>/progress")
 def get_progress(name):
     rows = db_fetchall(
@@ -207,6 +224,7 @@ def get_progress(name):
         (name,),
     )
     return jsonify([{"week": r["week"], "adherence": r["adherence"]} for r in rows])
+
 
 @app.route("/client/<name>/progress-chart")
 def progress_chart(name):
@@ -235,6 +253,7 @@ def progress_chart(name):
     plt.close(fig)
     return Response(buffer.getvalue(), mimetype="image/png")
 
+
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
@@ -244,6 +263,7 @@ def login():
     if rows and check_password_hash(rows[0]["password_hash"], password or ""):
         return jsonify({"message": "Login successful", "username": username})
     return jsonify({"error": "Invalid credentials"}), 401
+
 
 @app.route("/client/<name>/report")
 def client_report(name):
@@ -263,6 +283,7 @@ def client_report(name):
         pdf.cell(0, 10, f"{label}: {client[key]}",
                  new_x="LMARGIN", new_y="NEXT")
     return Response(bytes(pdf.output()), mimetype="application/pdf")
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
