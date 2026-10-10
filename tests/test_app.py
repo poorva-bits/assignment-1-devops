@@ -1,6 +1,6 @@
 import pytest
 
-from app import app
+from app import app, calculate_calories
 
 @pytest.fixture
 def client():
@@ -30,4 +30,32 @@ def test_get_program_valid(client):
 
 def test_get_program_invalid(client):
     response = client.get("/programs/invalid")
+    assert response.status_code == 404
+
+def test_calculate_calories_logic():
+    assert calculate_calories(60, "fat_loss") == 1320
+    assert calculate_calories(70, "muscle_gain") == 2450
+    assert calculate_calories(50, "unknown") is None
+
+def test_create_client_valid(client):
+    response = client.post(
+        "/client", json={"name": "Poorva", "weight": 60, "program": "fat_loss"}
+    )
+    assert response.status_code == 200
+    assert response.get_json()["estimated_calories"] == 1320
+
+def test_create_client_missing_fields(client):
+    response = client.post("/client", json={"name": "Poorva"})
+    assert response.status_code == 400
+
+def test_create_client_invalid_weight(client):
+    response = client.post(
+        "/client", json={"name": "Poorva", "weight": -5, "program": "fat_loss"}
+    )
+    assert response.status_code == 400
+
+def test_create_client_invalid_program(client):
+    response = client.post(
+        "/client", json={"name": "Poorva", "weight": 60, "program": "nope"}
+    )
     assert response.status_code == 404
