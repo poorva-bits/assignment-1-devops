@@ -1,10 +1,11 @@
 import pytest
 
-from app import app, calculate_calories
+from app import CLIENTS, app, calculate_calories
 
 @pytest.fixture
 def client():
     app.config["TESTING"] = True
+    CLIENTS.clear()
     with app.test_client() as test_client:
         yield test_client
 
@@ -59,3 +60,19 @@ def test_create_client_invalid_program(client):
         "/client", json={"name": "Poorva", "weight": 60, "program": "nope"}
     )
     assert response.status_code == 404
+
+def test_clients_are_stored_and_listed(client):
+    client.post("/client", json={"name": "A", "weight": 50, "program": "beginner"})
+    client.post("/client", json={"name": "B", "weight": 80, "program": "muscle_gain"})
+    response = client.get("/clients")
+    assert response.status_code == 200
+    assert len(response.get_json()) == 2
+
+def test_export_csv(client):
+    client.post("/client", json={"name": "A", "weight": 50, "program": "beginner"})
+    response = client.get("/clients/export")
+    assert response.status_code == 200
+    assert response.mimetype == "text/csv"
+    body = response.get_data(as_text=True)
+    assert body.startswith("name,weight,program,calories")
+    assert "A,50,Beginner (BG),1300" in body
