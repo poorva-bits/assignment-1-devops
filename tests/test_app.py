@@ -113,3 +113,30 @@ def test_progress_chart_returns_png(client):
 def test_progress_chart_without_data(client):
     add_client(client, "A")
     assert client.get("/client/A/progress-chart").status_code == 404
+
+def test_login_success(client):
+    response = client.post(
+        "/login", json={"username": "admin", "password": "admin123"}
+    )
+    assert response.status_code == 200
+    assert response.get_json()["username"] == "admin"
+
+def test_login_wrong_password(client):
+    response = client.post(
+        "/login", json={"username": "admin", "password": "wrong"}
+    )
+    assert response.status_code == 401
+
+def test_login_unknown_user(client):
+    response = client.post("/login", json={"username": "x", "password": "y"})
+    assert response.status_code == 401
+
+def test_client_report_pdf(client):
+    add_client(client, "A")
+    response = client.get("/client/A/report")
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF")
+
+def test_client_report_unknown_client(client):
+    assert client.get("/client/ghost/report").status_code == 404

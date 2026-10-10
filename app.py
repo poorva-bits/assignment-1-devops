@@ -7,13 +7,15 @@ from datetime import datetime
 
 import matplotlib
 from flask import Flask, Response, jsonify, request
+from fpdf import FPDF
+from werkzeug.security import check_password_hash, generate_password_hash
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+matplotlib.use("Agg")  # no GUI needed - render charts straight to memory
+import matplotlib.pyplot as plt  # noqa: E402
 
 app = Flask(__name__)
 
-VERSION = "2.1"
+VERSION = "3.0"
 
 PROGRAMS = {
     "fat_loss": {
@@ -78,6 +80,17 @@ def init_db():
             adherence INTEGER
         )
     """)
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT
+        )
+    """)
+    if not db_fetchall("SELECT 1 FROM users WHERE username='admin'"):
+        db_execute(
+            "INSERT INTO users VALUES (?, ?)",
+            ("admin", generate_password_hash("admin123")),
+        )
 
 init_db()
 
@@ -221,6 +234,35 @@ def progress_chart(name):
     fig.savefig(buffer, format="png")
     plt.close(fig)
     return Response(buffer.getvalue(), mimetype="image/png")
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    password = data.get("password")
+    rows = db_fetchall("SELECT * FROM users WHERE username=?", (username,))
+    if rows and check_password_hash(rows[0]["password_hash"], password or ""):
+        return jsonify({"message": "Login successful", "username": username})
+    return jsonify({"error": "Invalid credentials"}), 401
+
+@app.route("/client/<name>/report")
+def client_report(name):
+    rows = db_fetchall("SELECT * FROM clients WHERE name=?", (name,))
+    if not rows:
+        return jsonify({"error": "Client not found"}), 404
+    client = row_to_client(rows[0])
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, f"ACEest Client Report - {client['name']}",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 12)
+    for label, key in [("Weight (kg)", "weight"), ("Program", "program"),
+                       ("Calories (kcal/day)", "calories")]:
+        pdf.cell(0, 10, f"{label}: {client[key]}",
+                 new_x="LMARGIN", new_y="NEXT")
+    return Response(bytes(pdf.output()), mimetype="application/pdf")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
