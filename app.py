@@ -1,11 +1,15 @@
 import csv
 import io
+import os
+import sqlite3
+from contextlib import closing
+from datetime import datetime
 
 from flask import Flask, Response, jsonify, request
 
 app = Flask(__name__)
 
-VERSION = "1.2"
+VERSION = "2.0"
 
 PROGRAMS = {
     "fat_loss": {
@@ -37,8 +41,41 @@ PROGRAMS = {
     },
 }
 
-# In-memory client store
-CLIENTS = []
+DB_NAME = os.environ.get("ACEEST_DB", "aceest.db")
+
+def get_db():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def db_execute(sql, params=()):
+    with closing(get_db()) as conn:
+        conn.execute(sql, params)
+        conn.commit()
+
+def db_fetchall(sql, params=()):
+    with closing(get_db()) as conn:
+        return conn.execute(sql, params).fetchall()
+
+def init_db():
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS clients (
+            name TEXT PRIMARY KEY,
+            weight REAL,
+            program TEXT,
+            calories INTEGER
+        )
+    """)
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_name TEXT,
+            week TEXT,
+            adherence INTEGER
+        )
+    """)
+
+init_db()
 
 def calculate_calories(weight, program_id):
     """Daily calorie estimate = weight (kg) x program calorie factor."""
@@ -85,29 +122,66 @@ def create_client():
     if calories is None:
         return jsonify({"error": "Invalid program"}), 404
 
-    record = {
+    program_name = PROGRAMS[program_id]["name"]
+    db_execute(
+        "INSERT OR REPLACE INTO clients VALUES (?, ?, ?, ?)",
+        (name, weight, program_name, calories),
+    )
+    return jsonify({
         "name": name,
         "weight": weight,
-        "program": PROGRAMS[program_id]["name"],
+        "program": program_name,
         "estimated_calories": calories,
+    })
+
+def row_to_client(row):
+    return {
+        "name": row["name"],
+        "weight": row["weight"],
+        "program": row["program"],
+        "calories": row["calories"],
     }
-    CLIENTS.append(record)
-    return jsonify(record)
+
+@app.route("/client/<name>")
+def get_client(name):
+    rows = db_fetchall("SELECT * FROM clients WHERE name=?", (name,))
+    if not rows:
+        return jsonify({"error": "Client not found"}), 404
+    return jsonify(row_to_client(rows[0]))
 
 @app.route("/clients")
 def list_clients():
-    return jsonify(CLIENTS)
+    rows = db_fetchall("SELECT * FROM clients ORDER BY name")
+    return jsonify([row_to_client(r) for r in rows])
 
 @app.route("/clients/export")
 def export_clients():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["name", "weight", "program", "calories"])
-    for c in CLIENTS:
-        writer.writerow(
-            [c["name"], c["weight"], c["program"], c["estimated_calories"]]
-        )
+    for r in db_fetchall("SELECT * FROM clients ORDER BY name"):
+        writer.writerow([r["name"], r["weight"], r["program"], r["calories"]])
     return Response(output.getvalue(), mimetype="text/csv")
+
+@app.route("/progress", methods=["POST"])
+def log_progress():
+    data = request.get_json(silent=True) or {}
+    name = data.get("name")
+    adherence = data.get("adherence")
+
+    if not name or adherence is None:
+        return jsonify({"error": "name and adherence are required"}), 400
+    if not isinstance(adherence, int) or not 0 <= adherence <= 100:
+        return jsonify({"error": "adherence must be an integer 0-100"}), 400
+    if not db_fetchall("SELECT 1 FROM clients WHERE name=?", (name,)):
+        return jsonify({"error": "Client not found"}), 404
+
+    week = datetime.now().strftime("Week %U - %Y")
+    db_execute(
+        "INSERT INTO progress (client_name, week, adherence) VALUES (?, ?, ?)",
+        (name, week, adherence),
+    )
+    return jsonify({"name": name, "week": week, "adherence": adherence})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

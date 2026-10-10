@@ -1,13 +1,19 @@
 import pytest
 
-from app import CLIENTS, app, calculate_calories
+from app import app, calculate_calories, db_execute
 
 @pytest.fixture
 def client():
     app.config["TESTING"] = True
-    CLIENTS.clear()
+    db_execute("DELETE FROM clients")
+    db_execute("DELETE FROM progress")
     with app.test_client() as test_client:
         yield test_client
+
+def add_client(client, name="A", weight=50, program="beginner"):
+    return client.post(
+        "/client", json={"name": name, "weight": weight, "program": program}
+    )
 
 def test_home(client):
     response = client.get("/")
@@ -15,9 +21,7 @@ def test_home(client):
     assert "ACEest" in response.get_json()["message"]
 
 def test_health(client):
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.get_json()["status"] == "UP"
+    assert client.get("/health").get_json()["status"] == "UP"
 
 def test_list_programs(client):
     response = client.get("/programs")
@@ -30,8 +34,7 @@ def test_get_program_valid(client):
     assert response.get_json()["calorie_factor"] == 22
 
 def test_get_program_invalid(client):
-    response = client.get("/programs/invalid")
-    assert response.status_code == 404
+    assert client.get("/programs/invalid").status_code == 404
 
 def test_calculate_calories_logic():
     assert calculate_calories(60, "fat_loss") == 1320
@@ -39,40 +42,54 @@ def test_calculate_calories_logic():
     assert calculate_calories(50, "unknown") is None
 
 def test_create_client_valid(client):
-    response = client.post(
-        "/client", json={"name": "Poorva", "weight": 60, "program": "fat_loss"}
-    )
+    response = add_client(client, "Poorva", 60, "fat_loss")
     assert response.status_code == 200
     assert response.get_json()["estimated_calories"] == 1320
 
 def test_create_client_missing_fields(client):
-    response = client.post("/client", json={"name": "Poorva"})
-    assert response.status_code == 400
+    assert client.post("/client", json={"name": "Poorva"}).status_code == 400
 
 def test_create_client_invalid_weight(client):
-    response = client.post(
-        "/client", json={"name": "Poorva", "weight": -5, "program": "fat_loss"}
-    )
-    assert response.status_code == 400
+    assert add_client(client, "P", -5, "fat_loss").status_code == 400
 
 def test_create_client_invalid_program(client):
-    response = client.post(
-        "/client", json={"name": "Poorva", "weight": 60, "program": "nope"}
-    )
-    assert response.status_code == 404
+    assert add_client(client, "P", 60, "nope").status_code == 404
 
-def test_clients_are_stored_and_listed(client):
-    client.post("/client", json={"name": "A", "weight": 50, "program": "beginner"})
-    client.post("/client", json={"name": "B", "weight": 80, "program": "muscle_gain"})
+def test_client_is_persisted_and_loadable(client):
+    add_client(client, "DBTest", 70, "muscle_gain")
+    response = client.get("/client/DBTest")
+    assert response.status_code == 200
+    assert response.get_json()["calories"] == 2450
+
+def test_get_unknown_client(client):
+    assert client.get("/client/ghost").status_code == 404
+
+def test_clients_listed(client):
+    add_client(client, "A")
+    add_client(client, "B", 80, "muscle_gain")
     response = client.get("/clients")
     assert response.status_code == 200
     assert len(response.get_json()) == 2
 
 def test_export_csv(client):
-    client.post("/client", json={"name": "A", "weight": 50, "program": "beginner"})
+    add_client(client, "A")
     response = client.get("/clients/export")
-    assert response.status_code == 200
     assert response.mimetype == "text/csv"
     body = response.get_data(as_text=True)
     assert body.startswith("name,weight,program,calories")
-    assert "A,50,Beginner (BG),1300" in body
+    assert "A,50.0,Beginner (BG),1300" in body
+
+def test_log_progress(client):
+    add_client(client, "A")
+    response = client.post("/progress", json={"name": "A", "adherence": 85})
+    assert response.status_code == 200
+    assert response.get_json()["adherence"] == 85
+
+def test_log_progress_unknown_client(client):
+    response = client.post("/progress", json={"name": "ghost", "adherence": 50})
+    assert response.status_code == 404
+
+def test_log_progress_invalid_value(client):
+    add_client(client, "A")
+    response = client.post("/progress", json={"name": "A", "adherence": 150})
+    assert response.status_code == 400
