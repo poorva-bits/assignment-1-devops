@@ -73,5 +73,5 @@ Deployment strategy: staged promotion with health-check-gated rollback.
 
 ## Evidence
 
-- **Screenshots and Documentation:** [DevOps Assignment 1 Evidence Repository](https://github.com/poorva-bits/assignment-1-devops-evidence)
-- **Video Demonstrations:** [View Video on Google Drive](https://drive.google.com/file/d/1SjpRs1_K90hQR__GEqAsGhZDABTnsPKQ/view?usp=sharing)
+- **Screenshots and Recording:** [DevOps Assignment 1 Evidence Repository](https://github.com/poorva-bits/assignment-1-devops-evidence)
+- **Recording on Drive:** [View Video on Google Drive](https://drive.google.com/file/d/1SjpRs1_K90hQR__GEqAsGhZDABTnsPKQ/view?usp=sharing)
