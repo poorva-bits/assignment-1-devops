@@ -70,3 +70,8 @@ Deployment strategy: staged promotion with health-check-gated rollback.
 | Development | http://localhost:5000 |
 | Staging | http://10.3.26.245:5001 |
 | Production | http://10.3.26.245:5002 |
+
+## Evidence
+
+- **Screenshots and Documentation:** [DevOps Assignment 1 Evidence Repository](https://github.com/poorva-bits/assignment-1-devops-evidence)
+- **Video Demonstrations:** [View Video on Google Drive](https://drive.google.com/file/d/1SjpRs1_K90hQR__GEqAsGhZDABTnsPKQ/view?usp=sharing)
